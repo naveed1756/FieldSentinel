@@ -70,7 +70,6 @@ def enableProguardInReleaseBuilds = false
 def jscFlavor = 'org.webkit:android-jsc:+'
 
 android {
-    ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
@@ -102,6 +101,13 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
+
+    // i added this block for tensorflow lite to prevent the .tflite files from being compressed
+    // which is necessary for them to be read correctly at runtime.
+    // Without this, the app would crash when trying to load the model because it wouldn't be able to read the .tflite file properly.
+    aaptOptions {
+        noCompress "tflite"
+    }
 }
 
 dependencies {
@@ -114,6 +120,10 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+
+    // i added these dependencies for tensorflow lite
+    implementation 'org.tensorflow:tensorflow-lite:2.14.0'
+    implementation 'org.tensorflow:tensorflow-lite-support:0.4.4'
 }
 
 apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)
