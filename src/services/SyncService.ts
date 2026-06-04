@@ -1,10 +1,17 @@
 import DatabaseService from './DatabaseService';
+import NetInfo from '@react-native-community/netinfo';
 
 class SyncService {
     private isSyncing = false;
 
     async syncNow() {
         if (this.isSyncing) return { success: false, message: 'Already syncing...' };
+        const netState = await NetInfo.fetch();
+        const isConnected = netState.isConnected && netState.isInternetReachable;
+        if (!isConnected) {
+            console.log('Offline. Sync postponed.');
+            return { success: false, message: 'No internet connection.' };
+        }
         this.isSyncing = true;
 
         try {
@@ -14,13 +21,6 @@ class SyncService {
             if (pending.length === 0) {
                 this.isSyncing = false;
                 return { success: true, message: 'All records are already synced!' };
-            }
-
-            // 2. The NetInfo Bypass (Since we uninstalled the broken package)
-            const isConnected = true;
-            if (!isConnected) {
-                this.isSyncing = false;
-                return { success: false, message: 'No internet connection.' };
             }
 
             // 3. Mock the AWS API POST Request
