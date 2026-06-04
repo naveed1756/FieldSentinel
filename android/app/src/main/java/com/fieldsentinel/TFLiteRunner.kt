@@ -16,7 +16,7 @@ class TFLiteRunner(private val context: Context) {
 
     private val options = Interpreter.Options().apply {
         setNumThreads(4)
-        setUseNNAPI(false)
+        setUseNNAPI(false) //produced error on some devices; can benchmark with and without NNAPI to see if it helps
     }
 
     fun loadModels() {

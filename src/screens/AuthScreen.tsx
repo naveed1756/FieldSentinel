@@ -8,11 +8,11 @@ import DatabaseService from '../services/DatabaseService';
 import NativeCameraView from '../components/NativeCameraView';
 
 export const AuthScreen = () => {
-  const [employeeId, setEmployeeId]         = useState('');
+  const [employeeId, setEmployeeId] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [result, setResult]                 = useState<any>(null);
-  const [status, setStatus]                 = useState('Ready');
-  const [hasPermission, setHasPermission]   = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const [status, setStatus] = useState('Ready');
+  const [hasPermission, setHasPermission] = useState(false);
 
   useEffect(() => {
     requestCameraPermission();
@@ -125,7 +125,7 @@ export const AuthScreen = () => {
 
       <TextInput
         style={styles.input}
-        placeholder="Enter Employee ID (e.g. Naveed)"
+        placeholder="Enter Employee ID (e.g. EMP_001)"
         value={employeeId}
         onChangeText={setEmployeeId}
         editable={!isAuthenticating}

@@ -7,7 +7,7 @@ import { FaceAuthBridge } from '../bridges/FaceAuthBridge';
 import NativeCameraView from '../components/NativeCameraView';
 
 export const EnrollmentScreen = () => {
-  const [employeeId, setEmployeeId]     = useState('EMP_001');
+  const [employeeId, setEmployeeId]     = useState('');
   const [isEnrolling, setIsEnrolling]   = useState(false);
   const [status, setStatus]             = useState('Position face in frame');
   const [hasPermission, setHasPermission] = useState(false);

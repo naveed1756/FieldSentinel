@@ -1,4 +1,5 @@
 import SQLite from 'react-native-sqlite-storage';
+import { DB_NAME } from '../utils/constants';
 
 SQLite.enablePromise(true);
 
@@ -6,7 +7,7 @@ class DatabaseService {
     private db: SQLite.SQLiteDatabase | null = null;
 
     async initDB() {
-        this.db = await SQLite.openDatabase({ name: 'DatalakeFaceAuth.db', location: 'default' });
+        this.db = await SQLite.openDatabase({ name: DB_NAME, location: 'default' });
 
         // Table: attendance_records
         await this.db.executeSql(`

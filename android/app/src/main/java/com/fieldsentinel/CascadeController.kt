@@ -93,7 +93,7 @@ class CascadeController(
             ?: return AuthResult(
                 success        = false,
                 abortStage     = "ENROLLMENT_MISSING",
-                authResult     = "FAIL_NO_FACE",
+                authResult     = "FAIL_RECOGNITION",
                 faceMatchScore = 0f,
                 antispoofScore = antispoofScore,
                 livenessMethod = livenessMethod,
