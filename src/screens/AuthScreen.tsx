@@ -1,157 +1,105 @@
 import React, { useState } from 'react';
-import {
-  View, Text, Button, StyleSheet,
-  Alert, ActivityIndicator, PermissionsAndroid, Platform
-} from 'react-native';
+import { View, Text, Button, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { FaceAuthBridge } from '../bridges/FaceAuthBridge';
 import DatabaseService from '../services/DatabaseService';
-import NativeCameraView from '../components/NativeCameraView';
-
-const EMPLOYEE_ID = 'EMP_001';
-
-const requestCameraPermission = async (): Promise<boolean> => {
-  if (Platform.OS !== 'android') return true;
-  const granted = await PermissionsAndroid.request(
-    PermissionsAndroid.PERMISSIONS.CAMERA,
-    {
-      title: 'Camera Permission',
-      message: 'FieldSentinel needs camera access to verify your identity.',
-      buttonPositive: 'Allow',
-    }
-  );
-  return granted === PermissionsAndroid.RESULTS.GRANTED;
-};
+import LocationService from '../services/LocationService';
 
 export const AuthScreen = () => {
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [result, setResult]                     = useState<any>(null);
-  const [status, setStatus]                     = useState('Ready');
+    const [employeeId, setEmployeeId] = useState('EMP_001'); // Hardcoded for testing
+    const [isAuthenticating, setIsAuthenticating] = useState(false);
+    const [result, setResult] = useState<any>(null);
 
-  const handleAuth = async () => {
-    setIsAuthenticating(true);
-    setResult(null);
+    const handleAuth = async () => {
+        setIsAuthenticating(true);
+        setResult(null);
 
-    try {
-      // 1. Check camera permission
-      const hasPermission = await requestCameraPermission();
-      if (!hasPermission) {
-        Alert.alert('Permission Denied', 'Camera access is required.');
-        return;
-      }
+        try {
+            // 1. Trigger the Confidence Cascade Native Pipeline
+            const authResponse = await FaceAuthBridge.authenticate(employeeId);
 
-      // 2. Capture current frame from native camera view
-      setStatus('Capturing face...');
-      const base64Frame = await FaceAuthBridge.captureFrame();
+            if (authResponse.success) {
+                // 2. Grab the real GPS coordinates!
+                const location = await LocationService.getCurrentPosition();
+                console.log("📍 Captured GPS: ", location.latitude, location.longitude);
 
-      if (!base64Frame) {
-        Alert.alert('No Frame', 'Could not capture camera frame. Try again.');
-        return;
-      }
+                // 3. Build the record with REAL location data
+                const record = {
+                    id: Math.random().toString(36).substring(7), // Dummy UUID
+                    employee_id: employeeId,
+                    timestamp_unix: Date.now(),
+                    timestamp_iso: new Date().toISOString(),
+                    latitude: location.latitude,           // <-- Replaced Dummy Data
+                    longitude: location.longitude,         // <-- Replaced Dummy Data
+                    gps_accuracy_m: location.gps_accuracy_m, // <-- Replaced Dummy Data
+                    mock_location: location.mock_location,   // <-- Replaced Dummy Data
+                    face_match_score: authResponse.score || 0.95,
+                    antispoof_score: 0.99,
+                    liveness_method: 'skipped_high_conf',
+                    auth_result: 'SUCCESS',
+                    cascade_abort_stage: null,
+                    drift_updated: 0,
+                    device_id: 'TEST_DEVICE_1',
+                    app_version: '1.0.0'
+                };
 
-      // 3. Run the confidence cascade pipeline
-      setStatus('Running AI pipeline...');
-      const authResponse = await FaceAuthBridge.authenticate(
-        EMPLOYEE_ID,
-        base64Frame,
-        0.99  // detection confidence — MediaPipe will provide real value later
-      );
+                // 4. Save to SQLite
+                await DatabaseService.insertRecord(record);
+                setResult({ status: 'Success ✅', color: 'green', score: record.face_match_score });
 
-      if (authResponse.success) {
-        // 4. Save to SQLite
-        const record = {
-          id:                   Math.random().toString(36).substring(2) + Date.now(),
-          employee_id:          EMPLOYEE_ID,
-          timestamp_unix:       Date.now(),
-          timestamp_iso:        new Date().toISOString(),
-          latitude:             12.9716,
-          longitude:            77.5946,
-          gps_accuracy_m:       5.0,
-          mock_location:        0,
-          face_match_score:     authResponse.faceMatchScore || 0,
-          antispoof_score:      authResponse.antispoofScore || 0,
-          liveness_method:      authResponse.livenessMethod || 'unknown',
-          auth_result:          'SUCCESS',
-          cascade_abort_stage:  null,
-          drift_updated:        authResponse.driftUpdated ? 1 : 0,
-          device_id:            'DEVICE_001',
-          app_version:          '1.0.0',
-        };
+            } else {
+                setResult({
+                    status: `Failed ❌: ${authResponse.errorStage}`,
+                    color: 'red',
+                    message: authResponse.errorMessage
+                });
+            }
+        } catch (error) {
+            console.error(error);
+            Alert.alert('System Error', 'Authentication pipeline crashed.');
+        } finally {
+            setIsAuthenticating(false);
+        }
+    };
 
-        await DatabaseService.insertRecord(record);
-        setStatus('Ready');
-        setResult({
-          status: 'Authenticated ✅',
-          color:  'green',
-          score:  authResponse.faceMatchScore,
-          method: authResponse.livenessMethod,
-        });
+    return (
+        <View style={styles.container}>
+            <Text style={styles.title}>NHAI Datalake Auth</Text>
 
-      } else {
-        setStatus('Ready');
-        setResult({
-          status:  `Failed ❌: ${authResponse.abortStage}`,
-          color:   'red',
-          message: authResponse.authResult,
-        });
-      }
+            {/* Placeholder for react-native-vision-camera */}
+            <View style={styles.cameraContainer}>
+                <Text style={styles.cameraText}>Live Camera Feed</Text>
+                <Text style={styles.targetBox}>[ Align Face Here ]</Text>
+            </View>
 
-    } catch (error: any) {
-      console.error(error);
-      Alert.alert('System Error', error.message || 'Pipeline crashed.');
-    } finally {
-      setIsAuthenticating(false);
-    }
-  };
+            <Text style={styles.employeeText}>Clocking in as: {employeeId}</Text>
 
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>FieldSentinel</Text>
-      <Text style={styles.subtitle}>NHAI Field Authentication</Text>
+            {isAuthenticating ? (
+                <ActivityIndicator size="large" color="#0066cc" style={{ marginTop: 20 }} />
+            ) : (
+                <View style={styles.buttonContainer}>
+                    <Button title="Verify Face & Clock In" onPress={handleAuth} color="#0066cc" />
+                </View>
+            )}
 
-      {/* Live camera preview from native Camera2 */}
-      <NativeCameraView style={styles.camera} />
-
-      <Text style={styles.employeeText}>Employee: {EMPLOYEE_ID}</Text>
-      <Text style={styles.statusText}>{status}</Text>
-
-      {isAuthenticating ? (
-        <ActivityIndicator size="large" color="#0066cc" style={{ marginTop: 20 }} />
-      ) : (
-        <View style={styles.buttonContainer}>
-          <Button
-            title="Verify Face & Clock In"
-            onPress={handleAuth}
-            color="#0066cc"
-          />
+            {result && (
+                <View style={[styles.resultBox, { borderColor: result.color }]}>
+                    <Text style={[styles.resultText, { color: result.color }]}>{result.status}</Text>
+                    {result.score && <Text>Match Score: {(result.score * 100).toFixed(1)}%</Text>}
+                    {result.message && <Text>{result.message}</Text>}
+                </View>
+            )}
         </View>
-      )}
-
-      {result && (
-        <View style={[styles.resultBox, { borderColor: result.color }]}>
-          <Text style={[styles.resultText, { color: result.color }]}>
-            {result.status}
-          </Text>
-          {result.score !== undefined && (
-            <Text>Match Score: {(result.score * 100).toFixed(1)}%</Text>
-          )}
-          {result.method && (
-            <Text>Liveness: {result.method}</Text>
-          )}
-          {result.message && <Text>{result.message}</Text>}
-        </View>
-      )}
-    </View>
-  );
+    );
 };
 
 const styles = StyleSheet.create({
-  container:     { flex:1, padding:20, backgroundColor:'#f5f5f5' },
-  title:         { fontSize:24, fontWeight:'bold', textAlign:'center', color:'#333', marginBottom:4 },
-  subtitle:      { fontSize:14, textAlign:'center', color:'#666', marginBottom:16 },
-  camera:        { height:380, borderRadius:12, overflow:'hidden', marginBottom:16 },
-  employeeText:  { textAlign:'center', fontSize:16, color:'#444', marginBottom:4 },
-  statusText:    { textAlign:'center', fontSize:13, color:'#888', marginBottom:12 },
-  buttonContainer: { marginTop:8 },
-  resultBox:     { marginTop:24, padding:20, borderWidth:2, borderRadius:10, alignItems:'center', backgroundColor:'#fff' },
-  resultText:    { fontSize:20, fontWeight:'bold', marginBottom:8 },
+    container: { flex: 1, padding: 20, justifyContent: 'center', backgroundColor: '#f5f5f5' },
+    title: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 20, color: '#333' },
+    cameraContainer: { height: 400, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', marginBottom: 20, borderRadius: 15 },
+    cameraText: { color: '#fff', position: 'absolute', top: 20 },
+    targetBox: { color: '#00ff00', fontSize: 20, fontWeight: 'bold', borderWidth: 2, borderColor: '#00ff00', padding: 40, borderStyle: 'dashed' },
+    employeeText: { textAlign: 'center', fontSize: 16, marginBottom: 20, color: '#666' },
+    buttonContainer: { marginTop: 10 },
+    resultBox: { marginTop: 30, padding: 20, borderWidth: 2, borderRadius: 10, alignItems: 'center', backgroundColor: '#fff' },
+    resultText: { fontSize: 20, fontWeight: 'bold', marginBottom: 10 }
 });
