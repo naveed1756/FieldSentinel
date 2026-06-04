@@ -69,8 +69,8 @@ class FaceAuthModule(reactContext: ReactApplicationContext)
             val faceBitmap       = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                 ?: throw Exception("Could not decode face image")
 
-            // For antispoof we use same bitmap — model handles resize internally in TFLiteRunner
-            val antispoofBitmap  = faceBitmap
+            // Decode a fresh bitmap for antispoof — same source, different size target
+            val antispoofBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?: throw Exception("Could not decode antispoof image")
 
             val result = cascadeController.authenticate(
                 employeeId              = employeeId,

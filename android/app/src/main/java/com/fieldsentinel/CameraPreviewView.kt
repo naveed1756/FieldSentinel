@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.*
-import android.media.ImageReader
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Base64
@@ -20,16 +19,30 @@ class CameraPreviewView(context: Context) : TextureView(context),
     private var captureSession: CameraCaptureSession? = null
     private var backgroundThread: HandlerThread? = null
     private var backgroundHandler: Handler? = null
-    private var pendingCaptureCallback: ((String) -> Unit)? = null
+    private var lastSurface: SurfaceTexture? = null
+    private var lastWidth: Int = 0
+    private var lastHeight: Int = 0
 
     init {
         surfaceTextureListener = this
     }
 
-    // Called when the TextureView surface is ready
     override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
+        lastSurface = surface
+        lastWidth = width
+        lastHeight = height
         startBackgroundThread()
-        openCamera(surface, width, height)
+
+        val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.CAMERA
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        if (hasPermission) {
+            openCamera(surface, width, height)
+        } else {
+            android.util.Log.w("CameraPreviewView", "Camera permission not granted yet")
+        }
     }
 
     override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
@@ -39,9 +52,17 @@ class CameraPreviewView(context: Context) : TextureView(context),
         return true
     }
 
+    // Called after permission is granted to start camera without waiting for surface event
+    fun openCameraWithPermission() {
+        val surface = lastSurface ?: return
+        openCamera(surface, lastWidth, lastHeight)
+    }
+
     private fun startBackgroundThread() {
-        backgroundThread = HandlerThread("CameraBackground").also { it.start() }
-        backgroundHandler = Handler(backgroundThread!!.looper)
+        if (backgroundThread == null) {
+            backgroundThread = HandlerThread("CameraBackground").also { it.start() }
+            backgroundHandler = Handler(backgroundThread!!.looper)
+        }
     }
 
     private fun stopBackgroundThread() {
@@ -52,69 +73,79 @@ class CameraPreviewView(context: Context) : TextureView(context),
     }
 
     private fun openCamera(surface: SurfaceTexture, width: Int, height: Int) {
-        val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        try {
+            val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
 
-        // Get front camera ID
-        val cameraId = manager.cameraIdList.firstOrNull { id ->
-            manager.getCameraCharacteristics(id)
-                .get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
-        } ?: manager.cameraIdList[0]  // fallback to first camera
+            val cameraId = manager.cameraIdList.firstOrNull { id ->
+                manager.getCameraCharacteristics(id)
+                    .get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
+            } ?: manager.cameraIdList[0]
 
-        manager.openCamera(cameraId, object : CameraDevice.StateCallback() {
-            override fun onOpened(camera: CameraDevice) {
-                cameraDevice = camera
-                startPreview(surface)
-            }
-            override fun onDisconnected(camera: CameraDevice) { camera.close() }
-            override fun onError(camera: CameraDevice, error: Int) { camera.close() }
-        }, backgroundHandler)
+            manager.openCamera(cameraId, object : CameraDevice.StateCallback() {
+                override fun onOpened(camera: CameraDevice) {
+                    cameraDevice = camera
+                    startPreview(surface)
+                }
+                override fun onDisconnected(camera: CameraDevice) { camera.close() }
+                override fun onError(camera: CameraDevice, error: Int) {
+                    android.util.Log.e("CameraPreviewView", "Camera error: $error")
+                    camera.close()
+                }
+            }, backgroundHandler)
+        } catch (e: Exception) {
+            android.util.Log.e("CameraPreviewView", "openCamera failed: ${e.message}")
+        }
     }
 
     private fun startPreview(surfaceTexture: SurfaceTexture) {
-        val surface = Surface(surfaceTexture)
-        val previewRequest = cameraDevice!!
-            .createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
-            .apply { addTarget(surface) }
-            .build()
+        try {
+            val surface = Surface(surfaceTexture)
+            val previewRequest = cameraDevice!!
+                .createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
+                .apply { addTarget(surface) }
+                .build()
 
-        cameraDevice!!.createCaptureSession(
-            listOf(surface),
-            object : CameraCaptureSession.StateCallback() {
-                override fun onConfigured(session: CameraCaptureSession) {
-                    captureSession = session
-                    session.setRepeatingRequest(previewRequest, null, backgroundHandler)
-                }
-                override fun onConfigureFailed(session: CameraCaptureSession) {}
-            },
-            backgroundHandler
-        )
+            cameraDevice!!.createCaptureSession(
+                listOf(surface),
+                object : CameraCaptureSession.StateCallback() {
+                    override fun onConfigured(session: CameraCaptureSession) {
+                        captureSession = session
+                        session.setRepeatingRequest(previewRequest, null, backgroundHandler)
+                    }
+                    override fun onConfigureFailed(session: CameraCaptureSession) {
+                        android.util.Log.e("CameraPreviewView", "Capture session config failed")
+                    }
+                },
+                backgroundHandler
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("CameraPreviewView", "startPreview failed: ${e.message}")
+        }
     }
 
-    // Called from FaceAuthModule when authentication is triggered
-    // Captures the current frame as base64 JPEG string
     fun captureFrame(callback: (String) -> Unit) {
-        pendingCaptureCallback = callback
-
-        // Capture current TextureView bitmap
         backgroundHandler?.post {
             try {
-                val bitmap = getBitmap()  // TextureView built-in method
+                val bitmap = getBitmap()
                 if (bitmap == null) {
                     callback("")
                     return@post
                 }
 
-                // Flip horizontally (front camera mirror correction)
-                val matrix = Matrix().apply { preScale(-1f, 1f, bitmap.width / 2f, bitmap.height / 2f) }
-                val flipped = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+                val matrix = Matrix().apply {
+                    preScale(-1f, 1f, bitmap.width / 2f, bitmap.height / 2f)
+                }
+                val flipped = Bitmap.createBitmap(
+                    bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
+                )
 
-                // Compress to JPEG and encode to base64
                 val stream = ByteArrayOutputStream()
                 flipped.compress(Bitmap.CompressFormat.JPEG, 85, stream)
                 val base64 = Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
-
                 callback(base64)
+
             } catch (e: Exception) {
+                android.util.Log.e("CameraPreviewView", "captureFrame failed: ${e.message}")
                 callback("")
             }
         }
