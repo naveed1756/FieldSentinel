@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { FaceAuthBridge } from '../bridges/FaceAuthBridge';
 import DatabaseService from '../services/DatabaseService';
+import LocationService from '../services/LocationService';
 import NativeCameraView from '../components/NativeCameraView';
 
 export const AuthScreen = () => {
@@ -31,6 +32,10 @@ export const AuthScreen = () => {
         }
       );
       if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+        const locationGranted = await LocationService.requestPermission();
+        if (!locationGranted) {
+          Alert.alert('Location Permission Denied', 'Location access is recommended for accurate attendance logging, but you can still authenticate without it.');
+        }
         setHasPermission(true);
       } else {
         Alert.alert('Permission Denied', 'Camera is required for face authentication.');
@@ -67,14 +72,22 @@ export const AuthScreen = () => {
       );
 
       if (authResponse.success) {
+        let location;
+        try {
+            location = await LocationService.getCurrentLocation();
+            console.log('GPS Location:', location);
+        } catch {
+            Alert.alert('Location Error', 'Could not fetch location. Recording auth without location data.');
+            location = { latitude: 0, longitude: 0, accuracy: 0 };
+        }
         const record = {
           id:                  Math.random().toString(36).substring(2) + Date.now(),
           employee_id:         employeeId.trim(),
           timestamp_unix:      Date.now(),
           timestamp_iso:       new Date().toISOString(),
-          latitude:            12.9716,
-          longitude:           77.5946,
-          gps_accuracy_m:      5.0,
+          latitude:            location.latitude,
+          longitude:           location.longitude,
+          gps_accuracy_m:      location.accuracy,
           mock_location:       0,
           face_match_score:    authResponse.faceMatchScore || 0,
           antispoof_score:     authResponse.antispoofScore || 0,
