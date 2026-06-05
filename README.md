@@ -1,79 +1,330 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# FieldSentinel
 
-# Getting Started
+Offline Facial Recognition & Liveness Detection System for NHAI Field Personnel
 
->**Note**: Make sure you have completed the [React Native - Environment Setup](https://reactnative.dev/docs/environment-setup) instructions till "Creating a new application" step, before proceeding.
+FieldSentinel is an offline-first identity verification system designed for field personnel operating in remote and low-connectivity environments. The application performs on-device facial authentication using lightweight TensorFlow Lite models and securely stores authentication events locally until network connectivity is restored.
 
-## Step 1: Start the Metro Server
+Developed for **NHAI Innovation Hackathon 7.0**.
 
-First, you will need to start **Metro**, the JavaScript _bundler_ that ships _with_ React Native.
+---
 
-To start Metro, run the following command from the _root_ of your React Native project:
+## Overview
 
-```bash
-# using npm
-npm start
+FieldSentinel enables secure personnel authentication without requiring continuous internet connectivity.
 
-# OR using Yarn
-yarn start
+The system performs:
+
+* Offline facial recognition
+* Passive anti-spoofing
+* GPS-tagged authentication events
+* Encrypted biometric template storage
+* Local SQLite event storage
+* Deferred cloud synchronization
+* Adaptive embedding drift updates
+
+All biometric processing occurs entirely on-device.
+
+---
+
+## Key Features
+
+### Offline Authentication
+
+Authentication continues to function in:
+
+* Remote project locations
+* Highway construction zones
+* Low-connectivity environments
+* Airplane mode
+
+No network access is required during authentication.
+
+---
+
+### Face Recognition
+
+Uses MobileFaceNet to generate a 128-dimensional facial embedding.
+
+* Model: MobileFaceNet INT8
+* Size: 1.55 MB
+* Output: 128-dimensional embedding vector
+* Matching: Cosine Similarity
+
+Only mathematical embeddings are stored.
+
+Raw face images are never retained.
+
+---
+
+### Passive Anti-Spoofing
+
+Uses MiniFASNet to identify:
+
+* Printed photo attacks
+
+* Screen replay attacks
+
+* Basic spoof attempts
+
+* Model: MiniFASNet
+
+* Size: 0.88 MB
+
+* Inference Time: ~30 ms
+
+---
+
+### Hardware-Backed Security
+
+Embeddings are encrypted using:
+
+* AES-256-GCM
+* Android Keystore
+* Hardware-backed key storage
+
+Encryption keys never leave the device security boundary.
+
+---
+
+### GPS Verification
+
+Authentication events include:
+
+* Latitude
+* Longitude
+* GPS accuracy
+
+Location acquisition works offline using device GPS.
+
+---
+
+### Local Storage
+
+Authentication records are stored in:
+
+```text
+fieldsentinel.db
 ```
 
-## Step 2: Start your Application
+using SQLite.
 
-Let Metro Bundler run in its _own_ terminal. Open a _new_ terminal from the _root_ of your React Native project. Run the following command to start your _Android_ or _iOS_ app:
+Pending records remain available offline until synchronization succeeds.
 
-### For Android
+---
 
-```bash
-# using npm
-npm run android
+### Sync & Purge
 
-# OR using Yarn
-yarn android
+When connectivity is restored:
+
+1. Pending records are uploaded
+2. Records are marked as synced
+3. Old synced records are purged
+
+Network availability is monitored using NetInfo.
+
+---
+
+### Embedding Drift Adaptation
+
+FieldSentinel updates reference embeddings after highly confident successful authentications.
+
+Benefits:
+
+* Adapts to appearance changes
+* Reduces re-enrollment frequency
+* Maintains recognition accuracy over time
+
+---
+
+## Architecture
+
+```text
+React Native UI
+        │
+        ▼
+FaceAuth Bridge
+        │
+        ▼
+Cascade Controller
+        │
+ ┌──────┼────────┐
+ ▼      ▼        ▼
+AntiSpoof  Recognition  Liveness
+(MiniFASNet) (MobileFaceNet)
+        │
+        ▼
+Authentication Result
+        │
+        ▼
+SQLite Storage
+        │
+        ▼
+AWS Sync Layer
 ```
 
-### For iOS
+---
 
-```bash
-# using npm
-npm run ios
+## Authentication Pipeline
 
-# OR using Yarn
-yarn ios
+### Gate 1 — Face Detection
+
+Validates face presence using confidence thresholds.
+
+### Gate 2 — Passive Anti-Spoofing
+
+Runs MiniFASNet.
+
+Rejects obvious spoof attempts.
+
+### Gate 3 — Active Liveness (Architecture)
+
+Blink-based liveness verification is part of the system architecture but is not integrated in the current prototype.
+
+### Gate 4 — Face Recognition
+
+Generates a live embedding and compares it against the enrolled reference using cosine similarity.
+
+---
+
+## AI Models
+
+### MobileFaceNet
+
+| Property     | Value                 |
+| ------------ | --------------------- |
+| Type         | Face Recognition      |
+| Quantization | INT8                  |
+| Size         | 1.55 MB               |
+| Input        | 112×112×3             |
+| Output       | 128-D Embedding       |
+| Accuracy     | 99.5% (LFW Benchmark) |
+
+### MiniFASNet
+
+| Property  | Value                 |
+| --------- | --------------------- |
+| Type      | Passive Anti-Spoof    |
+| Size      | 0.88 MB               |
+| Input     | 80×80×3               |
+| Output    | Real/Spoof Confidence |
+| Inference | ~30 ms                |
+
+Total model footprint:
+
+```text
+2.43 MB
 ```
 
-If everything is set up _correctly_, you should see your new app running in your _Android Emulator_ or _iOS Simulator_ shortly provided you have set up your emulator/simulator correctly.
+---
 
-This is one way to run your app — you can also run it directly from within Android Studio and Xcode respectively.
+## Technology Stack
 
-## Step 3: Modifying your App
+### Frontend
 
-Now that you have successfully run the app, let's modify it.
+* React Native 0.73.6
+* TypeScript
 
-1. Open `App.tsx` in your text editor of choice and edit some lines.
-2. For **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Developer Menu** (<kbd>Ctrl</kbd> + <kbd>M</kbd> (on Window and Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (on macOS)) to see your changes!
+### Android Native Layer
 
-   For **iOS**: Hit <kbd>Cmd ⌘</kbd> + <kbd>R</kbd> in your iOS Simulator to reload the app and see your changes!
+* Kotlin 1.9.0
+* React Native Native Modules
 
-## Congratulations! :tada:
+### AI Runtime
 
-You've successfully run and modified your React Native App. :partying_face:
+* TensorFlow Lite 2.14.0
 
-### Now what?
+### Storage
 
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [Introduction to React Native](https://reactnative.dev/docs/getting-started).
+* SQLite
+* AsyncStorage
 
-# Troubleshooting
+### Security
 
-If you can't get this to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
+* Android Keystore
+* AES-256-GCM
 
-# Learn More
+### Connectivity
 
-To learn more about React Native, take a look at the following resources:
+* NetInfo
+* react-native-geolocation-service
 
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+---
+
+## Prototype Status
+
+### Implemented
+
+* Offline facial authentication
+* MobileFaceNet integration
+* MiniFASNet anti-spoofing
+* Confidence cascade
+* GPS capture
+* SQLite storage
+* Network-aware sync
+* Hardware-backed encryption
+* Embedding drift updates
+
+### Planned / Full Architecture
+
+* MediaPipe face alignment
+* MediaPipe face detection
+* EAR-based blink liveness detection
+* iOS native implementation
+* Production AWS integration
+
+---
+
+## Build Requirements
+
+* Node.js 22+
+* React Native 0.73.6
+* Android Studio
+* JDK 17+
+* Android SDK 34
+
+---
+
+## Installation
+
+```bash
+npm install
+```
+
+Run Android:
+
+```bash
+npx react-native run-android
+```
+
+Build Release APK:
+
+```bash
+cd android
+gradlew.bat assembleRelease
+```
+
+Release APK:
+
+```text
+android/app/build/outputs/apk/release/app-release.apk
+```
+
+---
+
+## Security Notes
+
+* No raw facial images are stored.
+* Embeddings are encrypted before persistence.
+* Encryption keys remain inside Android Keystore.
+* Authentication operates fully offline.
+* GPS metadata is stored alongside authentication events.
+
+---
+
+## License
+
+Created for NHAI Innovation Hackathon 7.0.
+
+FieldSentinel Prototype v1.0
+
+___
