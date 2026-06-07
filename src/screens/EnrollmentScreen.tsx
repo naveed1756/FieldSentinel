@@ -29,6 +29,20 @@ export const EnrollmentScreen = () => {
       Alert.alert('Error', 'Enter an Employee ID first');
       return;
     }
+    const alreadyEnrolled = await FaceAuthBridge.isEnrolled(employeeId.trim());
+if (alreadyEnrolled) {
+  const confirmed = await new Promise<boolean>(resolve => {
+    Alert.alert(
+      'Already Enrolled',
+      `${employeeId} is already enrolled. Re-enroll and replace existing face data?`,
+      [
+        { text: 'Cancel', onPress: () => resolve(false), style: 'cancel' },
+        { text: 'Re-Enroll', onPress: () => resolve(true) },
+      ]
+    );
+  });
+  if (!confirmed) return;
+}
 
     setIsEnrolling(true);
     setStatus('Capturing frames...');
@@ -61,10 +75,15 @@ export const EnrollmentScreen = () => {
         Alert.alert('Failed', 'Enrollment failed. Try again.');
       }
     } catch (error: any) {
-      console.error(error);
-      Alert.alert('Error', error.message || 'Enrollment crashed.');
-      setStatus('Error — try again');
-    } finally {
+  console.error(error);
+  const msg = error.message || 'Enrollment crashed.';
+  Alert.alert('Enrollment Failed', msg);
+  setStatus(
+    msg.includes('aligned') || msg.includes('face')
+      ? 'Face not detected — look straight at camera'
+      : 'Error — try again'
+  );
+} finally {
       setIsEnrolling(false);
     }
   };

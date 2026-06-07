@@ -107,13 +107,21 @@ export const AuthScreen = () => {
           method: authResponse.livenessMethod,
         });
       } else {
-        setStatus('Ready');
-        setResult({
-          status:  `Failed ❌: ${authResponse.abortStage}`,
-          color:   'red',
-          message: authResponse.authResult,
-        });
-      }
+  setStatus('Ready');
+  setResult({
+    status:  `Failed ❌: ${authResponse.abortStage}`,
+    color:   'red',
+    message: authResponse.abortStage === 'NO_FACE'
+      ? 'No face detected. Face the camera directly.'
+      : authResponse.abortStage === 'FACE_TILTED'
+      ? 'Face tilted. Look straight at the camera.'
+      : authResponse.abortStage === 'ANTISPOOF_FAIL'
+      ? 'Liveness check failed.'
+      : authResponse.abortStage === 'RECOGNITION_FAIL'
+      ? 'Face not recognised. Try again.'
+      : authResponse.authResult,
+  });
+}
     } catch (error: any) {
       console.error(error);
       Alert.alert('System Error', error.message || 'Pipeline crashed.');
